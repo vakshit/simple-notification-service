@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package notification;
+option go_package = "github.com/vakshit-zomato/assignment-server/protos";
+
+service NotificationService {
+  rpc CreateNotification (CreateNotificationRequest) returns (CreateNotificationResponse);
+}
+
+message CreateNotificationRequest {
+  string time = 1;
+  string message = 2;
+  string email = 3;
+}
+
+message CreateNotificationResponse {
+  string id = 1;
+  string status = 2;
+}

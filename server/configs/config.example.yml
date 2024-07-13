@@ -1,0 +1,11 @@
+email:
+  from: "youremail@example.com"
+  password: "yourpassword"
+  smtp_host: "smtp.example.com"
+  smtp_port: "587"
+  from_name: "Notification Service"
+
+mongo:
+  host: "mongodb://mongodb:27017"
+  db: notificationdb
+  collection: notifications

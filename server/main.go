@@ -7,9 +7,12 @@ import (
 	"net"
 	"time"
 
+	"github.com/spf13/viper"
 	pb "github.com/vakshit-zomato/assignment-protos"
 	"github.com/vakshit-zomato/assignment-server/domain"
+	"github.com/vakshit-zomato/assignment-server/service"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"google.golang.org/grpc"
@@ -17,8 +20,6 @@ import (
 
 const (
 	mongoURI       = "mongodb://localhost:27017"
-	redisAddr      = "localhost:6379"
-	redisDB        = 0
 	dbName         = "notificationdb"
 	collectionName = "notifications"
 )
@@ -31,17 +32,23 @@ type server struct {
 func (s *server) CreateNotification(ctx context.Context, req *pb.CreateNotificationRequest) (*pb.CreateNotificationResponse, error) {
 	notif := domain.Notification{Time: req.Time, Message: req.Message, Email: req.Email}
 	collection := s.mongoClient.Database(dbName).Collection(collectionName)
-	_, err := collection.InsertOne(ctx, notif)
+	res, err := collection.InsertOne(ctx, notif)
 	if err != nil {
 		return nil, err
 	}
-
-	return &pb.CreateNotificationResponse{Status: "success"}, nil
+	oid, ok := res.InsertedID.(primitive.ObjectID)
+	if !ok {
+		return nil, fmt.Errorf("failed to convert inserted ID to ObjectID")
+	}
+	return &pb.CreateNotificationResponse{Id: oid.Hex(), Status: "success"}, nil
 }
 
 func (s *server) startNotificationChecker() {
+	var cur *mongo.Cursor
+	defer cur.Close(context.TODO())
 	for {
 		now := time.Now().Format("2006-01-02 15:04")
+		log.Println("Checking for notifications at: ", now)
 		collection := s.mongoClient.Database(dbName).Collection(collectionName)
 
 		// Define the filter for the documents you want to find
@@ -52,9 +59,10 @@ func (s *server) startNotificationChecker() {
 		if err != nil {
 			log.Fatalf("Failed to find documents: %v", err)
 		}
-		defer cur.Close(context.TODO())
 
 		// Loop over the cursor to get all documents
+		var ids []primitive.ObjectID
+		var notifs []domain.Notification
 		for cur.Next(context.TODO()) {
 			var result domain.Notification
 			err := cur.Decode(&result)
@@ -62,7 +70,16 @@ func (s *server) startNotificationChecker() {
 				log.Fatalf("Failed to decode document: %v", err)
 			}
 			// Process the document
-			sendMail(result)
+			notifs = append(notifs, result)
+			ids = append(ids, result.ID)
+		}
+		go service.SendEmailBulk(notifs)
+		if len(ids) != 0 {
+			_, err = collection.DeleteMany(context.TODO(), bson.D{{Key: "_id", Value: bson.D{{Key: "$in", Value: ids}}}})
+			if err != nil {
+				log.Fatalf("Failed to delete documents: %v", err)
+			}
+			log.Println("Sent notification count: ", len(ids))
 		}
 
 		cur.Close(context.TODO())
@@ -74,11 +91,18 @@ func (s *server) startNotificationChecker() {
 	}
 }
 
-func sendMail(notif domain.Notification) {
-	fmt.Println("Sending mail to", notif.Email, "at: ", time.Now().Format("2006-01-02 15:04:05"))
+func initConfig() {
+	viper.SetConfigName("config")
+	viper.SetConfigType("yml")
+	viper.AddConfigPath("configs")
+
+	if err := viper.ReadInConfig(); err != nil {
+		log.Fatalf("Error reading config file, %s", err)
+	}
 }
 
 func main() {
+	initConfig()
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)

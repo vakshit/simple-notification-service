@@ -1,0 +1,18 @@
+### How to run
+
+```bash
+# Clone the repo
+cd protos
+make compile_protos # This will generate the go code for the protos, use only if changes
+cd ..
+
+# Install dependencies
+make install_dependencies
+
+# Run the server
+cd server
+go run main.go
+
+# Run the client
+cd client
+go run main.go --message="A Gentle Reminder" --email="akshitv18@gmail.com" --time="2024-07-14 04:04"

@@ -16,3 +16,4 @@ go run main.go
 # Run the client
 cd client
 go run main.go --message="A Gentle Reminder" --email="akshitv18@gmail.com" --time="2024-07-14 04:04"
+```
